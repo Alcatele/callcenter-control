@@ -39,8 +39,7 @@ class FusionPbxRepository:
                 call_center_queue_uuid,
                 domain_uuid,
                 queue_name,
-                queue_extension,
-                queue_enabled
+                queue_extension
             from v_call_center_queues
             order by queue_name
             """
@@ -56,7 +55,7 @@ class FusionPbxRepository:
                         if row._mapping["queue_extension"] is not None
                         else None
                     ),
-                    "queue_enabled": str(row._mapping["queue_enabled"]),
+                    "queue_enabled": "true",
                 }
                 for row in conn.execute(query)
             ]
