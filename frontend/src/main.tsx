@@ -1,45 +1,89 @@
-import React from "react";
+import React, { FormEvent, useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import {
   Activity,
-  Bell,
   Building2,
   Headphones,
   LineChart,
+  LogOut,
   Pause,
   PhoneCall,
+  Plus,
+  RefreshCw,
   Settings,
   ShieldCheck,
   Users,
 } from "lucide-react";
 import "./styles.css";
 
-type AgentStatus = "available" | "paused" | "in_call" | "offline" | "wrap_up";
+const API_BASE = "/api";
+
+type AgentStatus = "available" | "paused" | "ringing" | "in_call" | "offline" | "wrap_up";
 
 type Agent = {
   id: string;
+  tenant_id: string;
   name: string;
   extension: string;
   status: AgentStatus;
-  queue: string;
-  tenant: string;
+  active: boolean;
 };
 
-const agents: Agent[] = [
-  { id: "1", name: "Ana Martins", extension: "1001", status: "in_call", queue: "Vendas", tenant: "Tenant A" },
-  { id: "2", name: "Bruno Silva", extension: "1002", status: "available", queue: "Suporte", tenant: "Tenant A" },
-  { id: "3", name: "Carla Souza", extension: "2001", status: "paused", queue: "Financeiro", tenant: "Tenant B" },
-  { id: "4", name: "Diego Lima", extension: "2002", status: "wrap_up", queue: "Vendas", tenant: "Tenant B" },
-  { id: "5", name: "Elisa Rocha", extension: "3001", status: "offline", queue: "Retencao", tenant: "Tenant C" },
-];
+type Queue = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  extension: string | null;
+  active: boolean;
+};
+
+type Tenant = {
+  id: string;
+  name: string;
+  domain_name: string;
+  fusionpbx_domain_uuid: string | null;
+  active: boolean;
+};
+
+type Session = {
+  access_token: string;
+  role: string;
+  tenant_id: string | null;
+  name: string;
+};
 
 const statusLabel: Record<AgentStatus, string> = {
   available: "Disponivel",
   paused: "Pausa",
+  ringing: "Tocando",
   in_call: "Em chamada",
   offline: "Offline",
   wrap_up: "Wrap-up",
 };
+
+function apiHeaders(session: Session) {
+  return {
+    Authorization: `Bearer ${session.access_token}`,
+    "Content-Type": "application/json",
+  };
+}
+
+async function apiRequest<T>(path: string, session: Session, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      ...apiHeaders(session),
+      ...(init?.headers ?? {}),
+    },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `Erro HTTP ${response.status}`);
+  }
+
+  return response.json() as Promise<T>;
+}
 
 function Stat({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
   return (
@@ -51,7 +95,163 @@ function Stat({ label, value, icon }: { label: string; value: string; icon: Reac
   );
 }
 
+function Login({ onLogin }: { onLogin: (session: Session) => void }) {
+  const [email, setEmail] = useState("pedro@alcatele.com.br");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setLoading(true);
+    setError("");
+
+    const form = new URLSearchParams();
+    form.set("username", email);
+    form.set("password", password);
+
+    try {
+      const response = await fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: form,
+      });
+
+      if (!response.ok) {
+        throw new Error("Email ou senha invalidos.");
+      }
+
+      const session = (await response.json()) as Session;
+      localStorage.setItem("cc_session", JSON.stringify(session));
+      onLogin(session);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha no login.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="loginScreen">
+      <form className="loginPanel" onSubmit={submit}>
+        <div className="loginBrand">
+          <Headphones size={30} />
+          <div>
+            <strong>Call Center Control</strong>
+            <span>FusionPBX Multi-tenant</span>
+          </div>
+        </div>
+
+        <label>
+          Email
+          <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" required />
+        </label>
+
+        <label>
+          Senha
+          <input
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            type="password"
+            required
+          />
+        </label>
+
+        {error ? <p className="formError">{error}</p> : null}
+
+        <button className="primaryButton" disabled={loading} type="submit">
+          {loading ? "Entrando..." : "Entrar"}
+        </button>
+      </form>
+    </main>
+  );
+}
+
 function App() {
+  const [session, setSession] = useState<Session | null>(() => {
+    const raw = localStorage.getItem("cc_session");
+    return raw ? (JSON.parse(raw) as Session) : null;
+  });
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [queues, setQueues] = useState<Queue[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [agentForm, setAgentForm] = useState({ name: "", extension: "", tenant_id: "" });
+  const [queueForm, setQueueForm] = useState({ name: "", extension: "", tenant_id: "" });
+
+  const tenantMap = useMemo(
+    () => new Map(tenants.map((tenant) => [tenant.id, tenant.name])),
+    [tenants],
+  );
+
+  async function loadData(activeSession = session) {
+    if (!activeSession) return;
+    setLoading(true);
+    setMessage("");
+    try {
+      const [agentData, queueData] = await Promise.all([
+        apiRequest<Agent[]>("/agents", activeSession),
+        apiRequest<Queue[]>("/queues", activeSession),
+      ]);
+      setAgents(agentData);
+      setQueues(queueData);
+
+      if (activeSession.role === "admin") {
+        const tenantData = await apiRequest<Tenant[]>("/tenants", activeSession);
+        setTenants(tenantData);
+        const firstTenant = tenantData[0]?.id ?? "";
+        setAgentForm((current) => ({ ...current, tenant_id: current.tenant_id || firstTenant }));
+        setQueueForm((current) => ({ ...current, tenant_id: current.tenant_id || firstTenant }));
+      }
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Erro ao carregar dados.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadData();
+  }, [session]);
+
+  async function createAgent(event: FormEvent) {
+    event.preventDefault();
+    if (!session) return;
+    await apiRequest<Agent>("/agents", session, {
+      method: "POST",
+      body: JSON.stringify(agentForm),
+    });
+    setAgentForm((current) => ({ ...current, name: "", extension: "" }));
+    setMessage("Agente criado com sucesso.");
+    await loadData(session);
+  }
+
+  async function createQueue(event: FormEvent) {
+    event.preventDefault();
+    if (!session) return;
+    await apiRequest<Queue>("/queues", session, {
+      method: "POST",
+      body: JSON.stringify(queueForm),
+    });
+    setQueueForm((current) => ({ ...current, name: "", extension: "" }));
+    setMessage("Fila criada com sucesso.");
+    await loadData(session);
+  }
+
+  function logout() {
+    localStorage.removeItem("cc_session");
+    setSession(null);
+  }
+
+  if (!session) {
+    return <Login onLogin={setSession} />;
+  }
+
+  const available = agents.filter((agent) => agent.status === "available").length;
+  const paused = agents.filter((agent) => agent.status === "paused").length;
+  const inCall = agents.filter((agent) => agent.status === "in_call").length;
+
   return (
     <div className="appShell">
       <aside className="sidebar">
@@ -59,7 +259,7 @@ function App() {
           <Headphones size={24} />
           <div>
             <strong>Call Center Control</strong>
-            <span>FusionPBX Multi-tenant</span>
+            <span>{session.name}</span>
           </div>
         </div>
 
@@ -76,34 +276,110 @@ function App() {
         <header className="topbar">
           <div>
             <h1>Supervisao em tempo real</h1>
-            <p>Visao consolidada de filas, agentes e tenants.</p>
+            <p>Cadastro operacional inicial integrado a API.</p>
           </div>
-          <button className="alertButton" title="Alertas"><Bell size={18} /> 3</button>
+          <div className="topbarActions">
+            <button className="iconButton" onClick={() => loadData()} title="Atualizar">
+              <RefreshCw size={18} />
+            </button>
+            <button className="iconButton" onClick={logout} title="Sair">
+              <LogOut size={18} />
+            </button>
+          </div>
         </header>
 
+        {message ? <div className="notice">{message}</div> : null}
+
         <section className="statsGrid">
-          <Stat label="Agentes ativos" value="87 / 100" icon={<Users size={22} />} />
-          <Stat label="Chamadas na fila" value="14" icon={<PhoneCall size={22} />} />
-          <Stat label="SLA atual" value="92%" icon={<ShieldCheck size={22} />} />
-          <Stat label="Em pausa" value="9" icon={<Pause size={22} />} />
+          <Stat label="Agentes cadastrados" value={String(agents.length)} icon={<Users size={22} />} />
+          <Stat label="Disponiveis" value={String(available)} icon={<ShieldCheck size={22} />} />
+          <Stat label="Em chamada" value={String(inCall)} icon={<PhoneCall size={22} />} />
+          <Stat label="Em pausa" value={String(paused)} icon={<Pause size={22} />} />
+        </section>
+
+        <section className="formsGrid">
+          <form className="panel formPanel" onSubmit={createAgent}>
+            <div className="panelHeader">
+              <h2>Novo agente</h2>
+              <Plus size={18} />
+            </div>
+            <label>
+              Tenant
+              <select
+                value={agentForm.tenant_id}
+                onChange={(event) => setAgentForm({ ...agentForm, tenant_id: event.target.value })}
+                required
+              >
+                {tenants.map((tenant) => (
+                  <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Nome
+              <input
+                value={agentForm.name}
+                onChange={(event) => setAgentForm({ ...agentForm, name: event.target.value })}
+                required
+              />
+            </label>
+            <label>
+              Ramal
+              <input
+                value={agentForm.extension}
+                onChange={(event) => setAgentForm({ ...agentForm, extension: event.target.value })}
+                required
+              />
+            </label>
+            <button className="primaryButton" disabled={loading} type="submit">Criar agente</button>
+          </form>
+
+          <form className="panel formPanel" onSubmit={createQueue}>
+            <div className="panelHeader">
+              <h2>Nova fila</h2>
+              <Plus size={18} />
+            </div>
+            <label>
+              Tenant
+              <select
+                value={queueForm.tenant_id}
+                onChange={(event) => setQueueForm({ ...queueForm, tenant_id: event.target.value })}
+                required
+              >
+                {tenants.map((tenant) => (
+                  <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Nome
+              <input
+                value={queueForm.name}
+                onChange={(event) => setQueueForm({ ...queueForm, name: event.target.value })}
+                required
+              />
+            </label>
+            <label>
+              Ramal da fila
+              <input
+                value={queueForm.extension}
+                onChange={(event) => setQueueForm({ ...queueForm, extension: event.target.value })}
+              />
+            </label>
+            <button className="primaryButton" disabled={loading} type="submit">Criar fila</button>
+          </form>
         </section>
 
         <section className="workArea">
           <div className="panel wide">
             <div className="panelHeader">
               <h2>Agentes</h2>
-              <div className="segmented">
-                <button className="selected">Todos</button>
-                <button>Online</button>
-                <button>Pausa</button>
-              </div>
             </div>
             <table>
               <thead>
                 <tr>
                   <th>Agente</th>
                   <th>Ramal</th>
-                  <th>Fila</th>
                   <th>Tenant</th>
                   <th>Status</th>
                 </tr>
@@ -113,23 +389,29 @@ function App() {
                   <tr key={agent.id}>
                     <td>{agent.name}</td>
                     <td>{agent.extension}</td>
-                    <td>{agent.queue}</td>
-                    <td>{agent.tenant}</td>
+                    <td>{tenantMap.get(agent.tenant_id) ?? agent.tenant_id}</td>
                     <td><span className={`status ${agent.status}`}>{statusLabel[agent.status]}</span></td>
                   </tr>
                 ))}
+                {agents.length === 0 ? (
+                  <tr><td colSpan={4}>Nenhum agente cadastrado ainda.</td></tr>
+                ) : null}
               </tbody>
             </table>
           </div>
 
           <div className="panel">
             <div className="panelHeader">
-              <h2>Filas criticas</h2>
+              <h2>Filas</h2>
             </div>
             <div className="queueList">
-              <div><strong>Vendas</strong><span>8 aguardando</span></div>
-              <div><strong>Suporte</strong><span>4 aguardando</span></div>
-              <div><strong>Retencao</strong><span>2 aguardando</span></div>
+              {queues.map((queue) => (
+                <div key={queue.id}>
+                  <strong>{queue.name}</strong>
+                  <span>{queue.extension || "sem ramal"}</span>
+                </div>
+              ))}
+              {queues.length === 0 ? <p>Nenhuma fila cadastrada ainda.</p> : null}
             </div>
           </div>
         </section>
@@ -139,4 +421,3 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(<App />);
-
