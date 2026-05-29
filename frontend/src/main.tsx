@@ -179,6 +179,7 @@ function App() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState<"tenants" | "queues" | "agents" | null>(null);
   const [activeView, setActiveView] = useState<ActiveView>("operation");
   const [agentForm, setAgentForm] = useState({ name: "", extension: "", tenant_id: "" });
   const [queueForm, setQueueForm] = useState({ name: "", extension: "", tenant_id: "" });
@@ -244,41 +245,65 @@ function App() {
 
   async function importTenantsFromFusionPbx() {
     if (!session) return;
-    const result = await apiRequest<{ created: number; updated: number; total: number }>(
-      "/fusionpbx/import-tenants",
-      session,
-      { method: "POST" },
-    );
-    setMessage(
-      `FusionPBX importado: ${result.created} criados, ${result.updated} atualizados, ${result.total} encontrados.`,
-    );
-    await loadData(session);
+    setImporting("tenants");
+    setMessage("Importando tenants do FusionPBX...");
+    try {
+      const result = await apiRequest<{ created: number; updated: number; total: number }>(
+        "/fusionpbx/import-tenants",
+        session,
+        { method: "POST" },
+      );
+      setMessage(
+        `Tenants importados: ${result.created} criados, ${result.updated} atualizados, ${result.total} encontrados.`,
+      );
+      await loadData(session);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Erro ao importar tenants.");
+    } finally {
+      setImporting(null);
+    }
   }
 
   async function importQueuesFromFusionPbx() {
     if (!session) return;
-    const result = await apiRequest<{ created: number; updated: number; total: number }>(
-      "/fusionpbx/import-queues",
-      session,
-      { method: "POST" },
-    );
-    setMessage(
-      `Filas importadas: ${result.created} criadas, ${result.updated} atualizadas.`,
-    );
-    await loadData(session);
+    setImporting("queues");
+    setMessage("Importando filas do FusionPBX...");
+    try {
+      const result = await apiRequest<{ created: number; updated: number; total: number }>(
+        "/fusionpbx/import-queues",
+        session,
+        { method: "POST" },
+      );
+      setMessage(
+        `Filas importadas: ${result.created} criadas, ${result.updated} atualizadas.`,
+      );
+      await loadData(session);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Erro ao importar filas.");
+    } finally {
+      setImporting(null);
+    }
   }
 
   async function importAgentsFromFusionPbx() {
     if (!session) return;
-    const result = await apiRequest<{ created: number; updated: number; total: number }>(
-      "/fusionpbx/import-agents",
-      session,
-      { method: "POST" },
-    );
-    setMessage(
-      `Agentes importados: ${result.created} criados, ${result.updated} atualizados.`,
-    );
-    await loadData(session);
+    setImporting("agents");
+    setMessage("Importando agentes do FusionPBX...");
+    try {
+      const result = await apiRequest<{ created: number; updated: number; total: number }>(
+        "/fusionpbx/import-agents",
+        session,
+        { method: "POST" },
+      );
+      setMessage(
+        `Agentes importados: ${result.created} criados, ${result.updated} atualizados.`,
+      );
+      await loadData(session);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Erro ao importar agentes.");
+    } finally {
+      setImporting(null);
+    }
   }
 
   function logout() {
@@ -484,17 +509,32 @@ function App() {
             <div className="panelHeader">
               <h2>Tenants cadastrados</h2>
               <div className="buttonGroup">
-                <button className="secondaryButton" onClick={importTenantsFromFusionPbx} type="button">
+                <button
+                  className="secondaryButton"
+                  disabled={importing !== null}
+                  onClick={importTenantsFromFusionPbx}
+                  type="button"
+                >
                   <RefreshCw size={16} />
-                  Tenants
+                  {importing === "tenants" ? "Importando..." : "Tenants"}
                 </button>
-                <button className="secondaryButton" onClick={importQueuesFromFusionPbx} type="button">
+                <button
+                  className="secondaryButton"
+                  disabled={importing !== null}
+                  onClick={importQueuesFromFusionPbx}
+                  type="button"
+                >
                   <RefreshCw size={16} />
-                  Filas
+                  {importing === "queues" ? "Importando..." : "Filas"}
                 </button>
-                <button className="secondaryButton" onClick={importAgentsFromFusionPbx} type="button">
+                <button
+                  className="secondaryButton"
+                  disabled={importing !== null}
+                  onClick={importAgentsFromFusionPbx}
+                  type="button"
+                >
                   <RefreshCw size={16} />
-                  Agentes
+                  {importing === "agents" ? "Importando..." : "Agentes"}
                 </button>
               </div>
             </div>
