@@ -217,6 +217,12 @@ h1 {
   cursor: pointer;
 }
 
+.buttonGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .notice {
   background: #e8f7fb;
   border: 1px solid #b9e5ef;

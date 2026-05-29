@@ -255,6 +255,32 @@ function App() {
     await loadData(session);
   }
 
+  async function importQueuesFromFusionPbx() {
+    if (!session) return;
+    const result = await apiRequest<{ created: number; updated: number; total: number }>(
+      "/fusionpbx/import-queues",
+      session,
+      { method: "POST" },
+    );
+    setMessage(
+      `Filas importadas: ${result.created} criadas, ${result.updated} atualizadas.`,
+    );
+    await loadData(session);
+  }
+
+  async function importAgentsFromFusionPbx() {
+    if (!session) return;
+    const result = await apiRequest<{ created: number; updated: number; total: number }>(
+      "/fusionpbx/import-agents",
+      session,
+      { method: "POST" },
+    );
+    setMessage(
+      `Agentes importados: ${result.created} criados, ${result.updated} atualizados.`,
+    );
+    await loadData(session);
+  }
+
   function logout() {
     localStorage.removeItem("cc_session");
     setSession(null);
@@ -457,10 +483,20 @@ function App() {
           <section className="panel wide">
             <div className="panelHeader">
               <h2>Tenants cadastrados</h2>
-              <button className="secondaryButton" onClick={importTenantsFromFusionPbx} type="button">
-                <RefreshCw size={16} />
-                Importar FusionPBX
-              </button>
+              <div className="buttonGroup">
+                <button className="secondaryButton" onClick={importTenantsFromFusionPbx} type="button">
+                  <RefreshCw size={16} />
+                  Tenants
+                </button>
+                <button className="secondaryButton" onClick={importQueuesFromFusionPbx} type="button">
+                  <RefreshCw size={16} />
+                  Filas
+                </button>
+                <button className="secondaryButton" onClick={importAgentsFromFusionPbx} type="button">
+                  <RefreshCw size={16} />
+                  Agentes
+                </button>
+              </div>
             </div>
             <table>
               <thead>
