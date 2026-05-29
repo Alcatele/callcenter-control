@@ -52,6 +52,8 @@ type Session = {
   name: string;
 };
 
+type ActiveView = "operation" | "agents" | "tenants" | "reports" | "settings";
+
 const statusLabel: Record<AgentStatus, string> = {
   available: "Disponivel",
   paused: "Pausa",
@@ -177,6 +179,7 @@ function App() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [activeView, setActiveView] = useState<ActiveView>("operation");
   const [agentForm, setAgentForm] = useState({ name: "", extension: "", tenant_id: "" });
   const [queueForm, setQueueForm] = useState({ name: "", extension: "", tenant_id: "" });
 
@@ -251,6 +254,21 @@ function App() {
   const available = agents.filter((agent) => agent.status === "available").length;
   const paused = agents.filter((agent) => agent.status === "paused").length;
   const inCall = agents.filter((agent) => agent.status === "in_call").length;
+  const pageTitle = {
+    operation: "Supervisao em tempo real",
+    agents: "Agentes e filas",
+    tenants: "Tenants",
+    reports: "Relatorios",
+    settings: "Configuracoes",
+  }[activeView];
+
+  const pageSubtitle = {
+    operation: "Visao operacional consolidada dos tenants.",
+    agents: "Cadastro operacional integrado a API.",
+    tenants: "Dominios mapeados para o FusionPBX.",
+    reports: "Indicadores iniciais do ambiente.",
+    settings: "Parametros de acesso e integracao.",
+  }[activeView];
 
   return (
     <div className="appShell">
@@ -264,19 +282,19 @@ function App() {
         </div>
 
         <nav>
-          <button className="navActive" title="Operacao"><Activity size={18} /> Operacao</button>
-          <button title="Agentes"><Users size={18} /> Agentes</button>
-          <button title="Tenants"><Building2 size={18} /> Tenants</button>
-          <button title="Relatorios"><LineChart size={18} /> Relatorios</button>
-          <button title="Configuracoes"><Settings size={18} /> Configuracoes</button>
+          <button className={activeView === "operation" ? "navActive" : ""} onClick={() => setActiveView("operation")} title="Operacao"><Activity size={18} /> Operacao</button>
+          <button className={activeView === "agents" ? "navActive" : ""} onClick={() => setActiveView("agents")} title="Agentes"><Users size={18} /> Agentes</button>
+          <button className={activeView === "tenants" ? "navActive" : ""} onClick={() => setActiveView("tenants")} title="Tenants"><Building2 size={18} /> Tenants</button>
+          <button className={activeView === "reports" ? "navActive" : ""} onClick={() => setActiveView("reports")} title="Relatorios"><LineChart size={18} /> Relatorios</button>
+          <button className={activeView === "settings" ? "navActive" : ""} onClick={() => setActiveView("settings")} title="Configuracoes"><Settings size={18} /> Configuracoes</button>
         </nav>
       </aside>
 
       <main>
         <header className="topbar">
           <div>
-            <h1>Supervisao em tempo real</h1>
-            <p>Cadastro operacional inicial integrado a API.</p>
+            <h1>{pageTitle}</h1>
+            <p>{pageSubtitle}</p>
           </div>
           <div className="topbarActions">
             <button className="iconButton" onClick={() => loadData()} title="Atualizar">
@@ -290,131 +308,191 @@ function App() {
 
         {message ? <div className="notice">{message}</div> : null}
 
-        <section className="statsGrid">
-          <Stat label="Agentes cadastrados" value={String(agents.length)} icon={<Users size={22} />} />
-          <Stat label="Disponiveis" value={String(available)} icon={<ShieldCheck size={22} />} />
-          <Stat label="Em chamada" value={String(inCall)} icon={<PhoneCall size={22} />} />
-          <Stat label="Em pausa" value={String(paused)} icon={<Pause size={22} />} />
-        </section>
+        {(activeView === "operation" || activeView === "reports") && (
+          <section className="statsGrid">
+            <Stat label="Agentes cadastrados" value={String(agents.length)} icon={<Users size={22} />} />
+            <Stat label="Disponiveis" value={String(available)} icon={<ShieldCheck size={22} />} />
+            <Stat label="Em chamada" value={String(inCall)} icon={<PhoneCall size={22} />} />
+            <Stat label="Em pausa" value={String(paused)} icon={<Pause size={22} />} />
+          </section>
+        )}
 
-        <section className="formsGrid">
-          <form className="panel formPanel" onSubmit={createAgent}>
-            <div className="panelHeader">
-              <h2>Novo agente</h2>
-              <Plus size={18} />
+        {activeView === "agents" && (
+          <section className="formsGrid">
+            <form className="panel formPanel" onSubmit={createAgent}>
+              <div className="panelHeader">
+                <h2>Novo agente</h2>
+                <Plus size={18} />
+              </div>
+              <label>
+                Tenant
+                <select
+                  value={agentForm.tenant_id}
+                  onChange={(event) => setAgentForm({ ...agentForm, tenant_id: event.target.value })}
+                  required
+                >
+                  {tenants.map((tenant) => (
+                    <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Nome
+                <input
+                  value={agentForm.name}
+                  onChange={(event) => setAgentForm({ ...agentForm, name: event.target.value })}
+                  required
+                />
+              </label>
+              <label>
+                Ramal
+                <input
+                  value={agentForm.extension}
+                  onChange={(event) => setAgentForm({ ...agentForm, extension: event.target.value })}
+                  required
+                />
+              </label>
+              <button className="primaryButton" disabled={loading} type="submit">Criar agente</button>
+            </form>
+
+            <form className="panel formPanel" onSubmit={createQueue}>
+              <div className="panelHeader">
+                <h2>Nova fila</h2>
+                <Plus size={18} />
+              </div>
+              <label>
+                Tenant
+                <select
+                  value={queueForm.tenant_id}
+                  onChange={(event) => setQueueForm({ ...queueForm, tenant_id: event.target.value })}
+                  required
+                >
+                  {tenants.map((tenant) => (
+                    <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Nome
+                <input
+                  value={queueForm.name}
+                  onChange={(event) => setQueueForm({ ...queueForm, name: event.target.value })}
+                  required
+                />
+              </label>
+              <label>
+                Ramal da fila
+                <input
+                  value={queueForm.extension}
+                  onChange={(event) => setQueueForm({ ...queueForm, extension: event.target.value })}
+                />
+              </label>
+              <button className="primaryButton" disabled={loading} type="submit">Criar fila</button>
+            </form>
+          </section>
+        )}
+
+        {(activeView === "operation" || activeView === "agents") && (
+          <section className="workArea">
+            <div className="panel wide">
+              <div className="panelHeader">
+                <h2>Agentes</h2>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Agente</th>
+                    <th>Ramal</th>
+                    <th>Tenant</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {agents.map((agent) => (
+                    <tr key={agent.id}>
+                      <td>{agent.name}</td>
+                      <td>{agent.extension}</td>
+                      <td>{tenantMap.get(agent.tenant_id) ?? agent.tenant_id}</td>
+                      <td><span className={`status ${agent.status}`}>{statusLabel[agent.status]}</span></td>
+                    </tr>
+                  ))}
+                  {agents.length === 0 ? (
+                    <tr><td colSpan={4}>Nenhum agente cadastrado ainda.</td></tr>
+                  ) : null}
+                </tbody>
+              </table>
             </div>
-            <label>
-              Tenant
-              <select
-                value={agentForm.tenant_id}
-                onChange={(event) => setAgentForm({ ...agentForm, tenant_id: event.target.value })}
-                required
-              >
-                {tenants.map((tenant) => (
-                  <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Nome
-              <input
-                value={agentForm.name}
-                onChange={(event) => setAgentForm({ ...agentForm, name: event.target.value })}
-                required
-              />
-            </label>
-            <label>
-              Ramal
-              <input
-                value={agentForm.extension}
-                onChange={(event) => setAgentForm({ ...agentForm, extension: event.target.value })}
-                required
-              />
-            </label>
-            <button className="primaryButton" disabled={loading} type="submit">Criar agente</button>
-          </form>
 
-          <form className="panel formPanel" onSubmit={createQueue}>
-            <div className="panelHeader">
-              <h2>Nova fila</h2>
-              <Plus size={18} />
+            <div className="panel">
+              <div className="panelHeader">
+                <h2>Filas</h2>
+              </div>
+              <div className="queueList">
+                {queues.map((queue) => (
+                  <div key={queue.id}>
+                    <strong>{queue.name}</strong>
+                    <span>{queue.extension || "sem ramal"}</span>
+                  </div>
+                ))}
+                {queues.length === 0 ? <p>Nenhuma fila cadastrada ainda.</p> : null}
+              </div>
             </div>
-            <label>
-              Tenant
-              <select
-                value={queueForm.tenant_id}
-                onChange={(event) => setQueueForm({ ...queueForm, tenant_id: event.target.value })}
-                required
-              >
-                {tenants.map((tenant) => (
-                  <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Nome
-              <input
-                value={queueForm.name}
-                onChange={(event) => setQueueForm({ ...queueForm, name: event.target.value })}
-                required
-              />
-            </label>
-            <label>
-              Ramal da fila
-              <input
-                value={queueForm.extension}
-                onChange={(event) => setQueueForm({ ...queueForm, extension: event.target.value })}
-              />
-            </label>
-            <button className="primaryButton" disabled={loading} type="submit">Criar fila</button>
-          </form>
-        </section>
+          </section>
+        )}
 
-        <section className="workArea">
-          <div className="panel wide">
+        {activeView === "tenants" && (
+          <section className="panel wide">
             <div className="panelHeader">
-              <h2>Agentes</h2>
+              <h2>Tenants cadastrados</h2>
             </div>
             <table>
               <thead>
                 <tr>
-                  <th>Agente</th>
-                  <th>Ramal</th>
-                  <th>Tenant</th>
+                  <th>Nome</th>
+                  <th>Dominio</th>
+                  <th>FusionPBX domain_uuid</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {agents.map((agent) => (
-                  <tr key={agent.id}>
-                    <td>{agent.name}</td>
-                    <td>{agent.extension}</td>
-                    <td>{tenantMap.get(agent.tenant_id) ?? agent.tenant_id}</td>
-                    <td><span className={`status ${agent.status}`}>{statusLabel[agent.status]}</span></td>
+                {tenants.map((tenant) => (
+                  <tr key={tenant.id}>
+                    <td>{tenant.name}</td>
+                    <td>{tenant.domain_name}</td>
+                    <td>{tenant.fusionpbx_domain_uuid || "nao vinculado"}</td>
+                    <td>{tenant.active ? "Ativo" : "Inativo"}</td>
                   </tr>
                 ))}
-                {agents.length === 0 ? (
-                  <tr><td colSpan={4}>Nenhum agente cadastrado ainda.</td></tr>
-                ) : null}
               </tbody>
             </table>
-          </div>
+          </section>
+        )}
 
-          <div className="panel">
+        {activeView === "reports" && (
+          <section className="panel">
             <div className="panelHeader">
-              <h2>Filas</h2>
+              <h2>Resumo operacional</h2>
             </div>
-            <div className="queueList">
-              {queues.map((queue) => (
-                <div key={queue.id}>
-                  <strong>{queue.name}</strong>
-                  <span>{queue.extension || "sem ramal"}</span>
-                </div>
-              ))}
-              {queues.length === 0 ? <p>Nenhuma fila cadastrada ainda.</p> : null}
+            <div className="summaryGrid">
+              <div><strong>{tenants.length}</strong><span>tenants</span></div>
+              <div><strong>{queues.length}</strong><span>filas</span></div>
+              <div><strong>{agents.length}</strong><span>agentes</span></div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
+
+        {activeView === "settings" && (
+          <section className="panel settingsPanel">
+            <div className="panelHeader">
+              <h2>Ambiente</h2>
+            </div>
+            <div className="settingsList">
+              <div><strong>Perfil</strong><span>{session.role}</span></div>
+              <div><strong>API</strong><span>/api</span></div>
+              <div><strong>Realtime</strong><span>/api/realtime/ws</span></div>
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );
