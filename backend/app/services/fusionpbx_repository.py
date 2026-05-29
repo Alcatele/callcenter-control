@@ -22,5 +22,10 @@ class FusionPbxRepository:
             """
         )
         with self._engine.connect() as conn:
-            return [dict(row._mapping) for row in conn.execute(query)]
-
+            return [
+                {
+                    "domain_uuid": str(row._mapping["domain_uuid"]),
+                    "domain_name": str(row._mapping["domain_name"]),
+                }
+                for row in conn.execute(query)
+            ]

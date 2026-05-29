@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import agents, auth, queues, realtime, tenants
+from app.api.routes import agents, auth, fusionpbx, queues, realtime, tenants
 from app.core.config import settings
 from app.db.session import create_database
 from app.seed import seed_initial_data
@@ -34,4 +34,4 @@ app.include_router(tenants.router, prefix="/tenants", tags=["tenants"])
 app.include_router(agents.router, prefix="/agents", tags=["agents"])
 app.include_router(queues.router, prefix="/queues", tags=["queues"])
 app.include_router(realtime.router, prefix="/realtime", tags=["realtime"])
-
+app.include_router(fusionpbx.router, prefix="/fusionpbx", tags=["fusionpbx"])

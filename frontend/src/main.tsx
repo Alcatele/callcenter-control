@@ -242,6 +242,19 @@ function App() {
     await loadData(session);
   }
 
+  async function importTenantsFromFusionPbx() {
+    if (!session) return;
+    const result = await apiRequest<{ created: number; updated: number; total: number }>(
+      "/fusionpbx/import-tenants",
+      session,
+      { method: "POST" },
+    );
+    setMessage(
+      `FusionPBX importado: ${result.created} criados, ${result.updated} atualizados, ${result.total} encontrados.`,
+    );
+    await loadData(session);
+  }
+
   function logout() {
     localStorage.removeItem("cc_session");
     setSession(null);
@@ -444,6 +457,10 @@ function App() {
           <section className="panel wide">
             <div className="panelHeader">
               <h2>Tenants cadastrados</h2>
+              <button className="secondaryButton" onClick={importTenantsFromFusionPbx} type="button">
+                <RefreshCw size={16} />
+                Importar FusionPBX
+              </button>
             </div>
             <table>
               <thead>
