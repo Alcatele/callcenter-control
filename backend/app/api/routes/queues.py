@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import current_user, tenant_scope
 from app.db.models import Queue, QueueMember, User
@@ -30,18 +30,34 @@ class QueueOut(BaseModel):
     name: str
     extension: str | None
     active: bool
+    members: list[str] = []
 
     class Config:
         from_attributes = True
 
 
 @router.get("", response_model=list[QueueOut])
-def list_queues(user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[Queue]:
-    stmt = select(Queue).order_by(Queue.name)
+def list_queues(user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[QueueOut]:
+    stmt = (
+        select(Queue)
+        .options(selectinload(Queue.members).selectinload(QueueMember.agent))
+        .order_by(Queue.name)
+    )
     scope = tenant_scope(user)
     if scope:
         stmt = stmt.where(Queue.tenant_id == scope)
-    return list(db.scalars(stmt))
+    queues = list(db.scalars(stmt))
+    return [
+        QueueOut(
+            id=queue.id,
+            tenant_id=queue.tenant_id,
+            name=queue.name,
+            extension=queue.extension,
+            active=queue.active,
+            members=[member.agent.name for member in queue.members if member.agent],
+        )
+        for queue in queues
+    ]
 
 
 @router.post("", response_model=QueueOut)
@@ -77,4 +93,3 @@ def add_queue_member(
     db.add(member)
     db.commit()
     return {"status": "ok"}
-

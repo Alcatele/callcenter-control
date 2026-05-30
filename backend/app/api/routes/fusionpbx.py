@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_admin
-from app.db.models import Agent, Queue, Tenant, User
+from app.db.models import Agent, Queue, QueueMember, Tenant, User
 from app.db.session import get_db
 from app.services.fusionpbx_repository import FusionPbxRepository
 
@@ -180,6 +180,68 @@ def import_agents(
                 name=agent_name,
                 extension=extension,
                 fusionpbx_agent_uuid=agent_uuid,
+            )
+        )
+        created += 1
+
+    db.commit()
+    return {"created": created, "updated": updated, "total": created + updated}
+
+
+@router.post("/import-tiers", response_model=FusionImportResult)
+def import_tiers(
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, int]:
+    repository = FusionPbxRepository()
+    if not repository.enabled():
+        raise HTTPException(status_code=400, detail="FusionPBX database is not configured")
+
+    created = 0
+    updated = 0
+    tenants_by_domain_uuid = {
+        tenant.fusionpbx_domain_uuid: tenant
+        for tenant in db.scalars(select(Tenant).where(Tenant.fusionpbx_domain_uuid.is_not(None)))
+    }
+
+    for fusion_tier in repository.list_tiers():
+        tenant = tenants_by_domain_uuid.get(str(fusion_tier["domain_uuid"]))
+        if not tenant:
+            continue
+
+        queue = db.scalar(
+            select(Queue).where(
+                Queue.tenant_id == tenant.id,
+                Queue.name == str(fusion_tier["queue_name"]),
+            )
+        )
+        agent = db.scalar(
+            select(Agent).where(
+                Agent.tenant_id == tenant.id,
+                Agent.name == str(fusion_tier["agent_name"]),
+            )
+        )
+        if not queue or not agent:
+            continue
+
+        member = db.scalar(
+            select(QueueMember).where(
+                QueueMember.queue_id == queue.id,
+                QueueMember.agent_id == agent.id,
+            )
+        )
+        if member:
+            member.tier_level = str(fusion_tier["tier_level"] or "1")
+            member.tier_position = str(fusion_tier["tier_position"] or "1")
+            updated += 1
+            continue
+
+        db.add(
+            QueueMember(
+                queue_id=queue.id,
+                agent_id=agent.id,
+                tier_level=str(fusion_tier["tier_level"] or "1"),
+                tier_position=str(fusion_tier["tier_position"] or "1"),
             )
         )
         created += 1

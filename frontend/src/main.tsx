@@ -35,6 +35,7 @@ type Queue = {
   name: string;
   extension: string | null;
   active: boolean;
+  members: string[];
 };
 
 type Tenant = {
@@ -179,7 +180,7 @@ function App() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [importing, setImporting] = useState<"tenants" | "queues" | "agents" | null>(null);
+  const [importing, setImporting] = useState<"tenants" | "queues" | "agents" | "tiers" | null>(null);
   const [activeView, setActiveView] = useState<ActiveView>("operation");
   const [agentForm, setAgentForm] = useState({ name: "", extension: "", tenant_id: "" });
   const [queueForm, setQueueForm] = useState({ name: "", extension: "", tenant_id: "" });
@@ -301,6 +302,27 @@ function App() {
       await loadData(session);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Erro ao importar agentes.");
+    } finally {
+      setImporting(null);
+    }
+  }
+
+  async function importTiersFromFusionPbx() {
+    if (!session) return;
+    setImporting("tiers");
+    setMessage("Importando vinculos agente-fila do FusionPBX...");
+    try {
+      const result = await apiRequest<{ created: number; updated: number; total: number }>(
+        "/fusionpbx/import-tiers",
+        session,
+        { method: "POST" },
+      );
+      setMessage(
+        `Vinculos importados: ${result.created} criados, ${result.updated} atualizados.`,
+      );
+      await loadData(session);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Erro ao importar vinculos.");
     } finally {
       setImporting(null);
     }
@@ -496,6 +518,7 @@ function App() {
                   <div key={queue.id}>
                     <strong>{queue.name}</strong>
                     <span>{queue.extension || "sem ramal"}</span>
+                    <small>{queue.members.length ? queue.members.join(", ") : "sem agentes"}</small>
                   </div>
                 ))}
                 {queues.length === 0 ? <p>Nenhuma fila cadastrada ainda.</p> : null}
@@ -535,6 +558,15 @@ function App() {
                 >
                   <RefreshCw size={16} />
                   {importing === "agents" ? "Importando..." : "Agentes"}
+                </button>
+                <button
+                  className="secondaryButton"
+                  disabled={importing !== null}
+                  onClick={importTiersFromFusionPbx}
+                  type="button"
+                >
+                  <RefreshCw size={16} />
+                  {importing === "tiers" ? "Importando..." : "Vinculos"}
                 </button>
               </div>
             </div>

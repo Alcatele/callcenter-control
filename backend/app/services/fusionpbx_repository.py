@@ -100,3 +100,40 @@ class FusionPbxRepository:
                 }
                 for row in conn.execute(query)
             ]
+
+    def list_tiers(self) -> list[dict[str, str | None]]:
+        if not self._engine:
+            return []
+        query = text(
+            """
+            select
+                call_center_tier_uuid,
+                domain_uuid,
+                queue_name,
+                agent_name,
+                tier_level,
+                tier_position
+            from v_call_center_tiers
+            order by queue_name, tier_level, tier_position
+            """
+        )
+        with self._engine.connect() as conn:
+            return [
+                {
+                    "call_center_tier_uuid": str(row._mapping["call_center_tier_uuid"]),
+                    "domain_uuid": str(row._mapping["domain_uuid"]),
+                    "queue_name": str(row._mapping["queue_name"]),
+                    "agent_name": str(row._mapping["agent_name"]),
+                    "tier_level": (
+                        str(row._mapping["tier_level"])
+                        if row._mapping["tier_level"] is not None
+                        else "1"
+                    ),
+                    "tier_position": (
+                        str(row._mapping["tier_position"])
+                        if row._mapping["tier_position"] is not None
+                        else "1"
+                    ),
+                }
+                for row in conn.execute(query)
+            ]

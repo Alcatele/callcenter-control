@@ -399,14 +399,18 @@ th {
   border: 1px solid #e3e9f2;
   border-radius: 8px;
   padding: 14px;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
   gap: 12px;
 }
 
 .queueList span {
   color: #a23b3b;
   font-weight: 700;
+}
+
+.queueList small {
+  color: #657188;
+  line-height: 1.35;
 }
 
 .summaryGrid {
