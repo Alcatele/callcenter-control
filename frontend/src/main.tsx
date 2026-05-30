@@ -180,7 +180,7 @@ function App() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [importing, setImporting] = useState<"tenants" | "queues" | "agents" | "tiers" | null>(null);
+  const [importing, setImporting] = useState<"tenants" | "queues" | "agents" | "tiers" | "status" | null>(null);
   const [activeView, setActiveView] = useState<ActiveView>("operation");
   const [agentForm, setAgentForm] = useState({ name: "", extension: "", tenant_id: "" });
   const [queueForm, setQueueForm] = useState({ name: "", extension: "", tenant_id: "" });
@@ -328,6 +328,27 @@ function App() {
     }
   }
 
+  async function syncAgentStatus() {
+    if (!session) return;
+    setImporting("status");
+    setMessage("Sincronizando status dos agentes no FreeSWITCH...");
+    try {
+      const result = await apiRequest<{ updated: number; found: number }>(
+        "/freeswitch/sync-agent-status",
+        session,
+        { method: "POST" },
+      );
+      setMessage(
+        `Status sincronizado: ${result.updated} agentes atualizados, ${result.found} encontrados no FreeSWITCH.`,
+      );
+      await loadData(session);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Erro ao sincronizar status.");
+    } finally {
+      setImporting(null);
+    }
+  }
+
   function logout() {
     localStorage.removeItem("cc_session");
     setSession(null);
@@ -385,6 +406,10 @@ function App() {
           <div className="topbarActions">
             <button className="iconButton" onClick={() => loadData()} title="Atualizar">
               <RefreshCw size={18} />
+            </button>
+            <button className="syncButton" disabled={importing !== null} onClick={syncAgentStatus} type="button">
+              <Activity size={18} />
+              {importing === "status" ? "Sincronizando..." : "Status"}
             </button>
             <button className="iconButton" onClick={logout} title="Sair">
               <LogOut size={18} />
